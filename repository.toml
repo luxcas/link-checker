@@ -1,0 +1,26 @@
+[repository]
+name = "link-checker"
+managed_by_uv = false
+changelog = "CHANGELOG.md"
+version = "version.txt"
+compose = "docker-compose.yml"
+
+[repository.towncrier]
+section = "Project"
+settings = "towncrier.toml"
+
+[backend]
+path = "backend"
+
+[backend.package]
+name = "link.checker"
+path = "backend"
+changelog = "backend/CHANGELOG.md"
+towncrier_settings = "backend/pyproject.toml"
+base_package = "Products.CMFPlone"
+publish = false
+
+[cookieplone]
+template = "classic_project"
+template_version = "103d811612845aa22b1096890801c7bddd8615fb"
+generated_date = "2026-06-04 02:29:56"
