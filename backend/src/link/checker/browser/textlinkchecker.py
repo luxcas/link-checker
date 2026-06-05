@@ -9,7 +9,6 @@ Estratégia para links resolveuid (links internos do Plone):
 - Se o UID não resolveu → órfão, marco como broken sem HTTP
 - HTTP só é feito para URLs externas
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -223,13 +222,35 @@ class TextLinkCheckerView(BrowserView):
         }
         self.last_action = ""
 
+    def export_query(self, fmt: str) -> str:
+        """Devolve a query string para os botões de export (CSV/JSON).
+
+        Junta os portal_types com vírgula, e serializa include_internal como 1/0.
+        """
+        return (
+            f"format={fmt}"
+            f"&portal_types={','.join(self.config['portal_types'])}"
+            f"&review_state={self.config['review_state']}"
+            f"&timeout={self.config['timeout']}"
+            f"&concurrency={self.config['concurrency']}"
+            f"&method={self.config['method']}"
+            f"&ok_rule={self.config['ok_rule']}"
+            f"&include_internal={'1' if self.config['include_internal'] else '0'}"
+        )
+
     def __call__(self):
         # lê config do form
         pts = self.request.form.get("portal_types")
         if pts:
-            self.config["portal_types"] = [
-                p.strip() for p in pts.split(",") if p.strip()
-            ]
+            # pode vir como string (comma-separated) ou lista (multi-value form)
+            if isinstance(pts, str):
+                self.config["portal_types"] = [
+                    p.strip() for p in pts.split(",") if p.strip()
+                ]
+            else:
+                self.config["portal_types"] = [
+                    str(p).strip() for p in pts if str(p).strip()
+                ]
         else:
             self.config["portal_types"] = DEFAULT_PORTAL_TYPES
         self.config["review_state"] = _form_value(self.request, "review_state", "all")
@@ -243,7 +264,7 @@ class TextLinkCheckerView(BrowserView):
         self.config["ok_rule"] = _form_value(self.request, "ok_rule", DEFAULT_OK_RULE)
         self.config["include_internal"] = _form_value(
             self.request, "include_internal", "1"
-        ) in ("1", "true", "on", "yes")
+        ) in ("1", "true", "on", "yes", "True", True)
 
         action = self.request.form.get("action", "")
         self.last_action = action
@@ -324,6 +345,32 @@ class TextLinkCheckerView(BrowserView):
 class TextLinkCheckerExport(BrowserView):
     """Exporta o resultado como CSV ou JSON."""
 
+    def _parse_portal_types(self) -> list[str]:
+        """Lê portal_types do form. Aceita string comma-separated ou lista."""
+        raw = self.request.form.get("portal_types")
+        if raw is None:
+            return list(DEFAULT_PORTAL_TYPES)
+        if isinstance(raw, (list, tuple)):
+            return [str(p).strip() for p in raw if str(p).strip()]
+        # string: pode ser "A,B,C" ou "['A', 'B', 'C']" (Python repr) — normalizamos
+        s = str(raw).strip()
+        # se parece repr de lista, extrair itens
+        if s.startswith("[") and s.endswith("]"):
+            inner = s[1:-1]
+            parts = [p.strip().strip("'").strip('"') for p in inner.split(",")]
+        else:
+            parts = s.split(",")
+        return [p.strip() for p in parts if p.strip()]
+
+    def _parse_bool(self, name: str, default: bool = True) -> bool:
+        """Lê um booleano do form, tolerante a '1', 'true', True, etc."""
+        raw = self.request.form.get(name)
+        if raw is None:
+            return default
+        if isinstance(raw, bool):
+            return raw
+        return str(raw).strip().lower() in ("1", "true", "on", "yes")
+
     def __call__(self):
         fmt = self.request.form.get("format", "csv").lower()
         config = {
@@ -333,16 +380,8 @@ class TextLinkCheckerExport(BrowserView):
             ),
             "method": _form_value(self.request, "method", DEFAULT_METHOD),
             "ok_rule": _form_value(self.request, "ok_rule", DEFAULT_OK_RULE),
-            "include_internal": _form_value(self.request, "include_internal", "1")
-            in ("1", "true", "on", "yes"),
-            "portal_types": [
-                p.strip()
-                for p in (
-                    self.request.form.get("portal_types")
-                    or ",".join(DEFAULT_PORTAL_TYPES)
-                ).split(",")
-                if p.strip()
-            ],
+            "include_internal": self._parse_bool("include_internal", True),
+            "portal_types": self._parse_portal_types(),
             "review_state": _form_value(self.request, "review_state", "all"),
         }
 
