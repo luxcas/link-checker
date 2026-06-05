@@ -5,11 +5,11 @@
       metal:use-macro="context/@@main_template/macros/master">
 
   <metal:block fill-slot="style">
- 
+    
   </metal:block>
 
   <metal:block fill-slot="content">
-     <style type="text/css">
+  <style type="text/css">
       .lc-wrap { max-width: 1280px; margin: 1em auto; }
       .lc-card { background: #fff; border: 1px solid #d4d4d4; border-radius: 8px; padding: 1.2em 1.4em; margin-bottom: 1em; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
       .lc-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: .6em; margin-bottom: 1em; }
@@ -260,6 +260,9 @@
               <td>
                 <span tal:attributes="class string:lc-pill ${row/category}"
                       tal:content="row/category">ok</span>
+                <span tal:condition="python: row.get('method') == 'catalog'"
+                      style="display:inline-block;margin-left:.3em;font-size:.7em;color:#888"
+                      title="Validado pelo catalog (sem HTTP)">via catalog</span>
               </td>
               <td class="lc-mono" tal:content="row/status">0</td>
               <td class="lc-mono">
@@ -281,7 +284,7 @@
                       onclick="document.getElementById('pages-${number}').classList.toggle('open')">
                   ▸ <span tal:content="python: row['n_pages']">1</span> página(s)
                 </span>
-                <ul class=""
+                <ul  class=""
                     tal:attributes="id python: f'pages-{repeat.row.number}'">
                   <li tal:repeat="p python: row.get('pages', [])">
                     <a tal:attributes="href string:${p/path}/edit"

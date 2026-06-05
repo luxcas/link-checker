@@ -1,7 +1,15 @@
 """View: @@link-checker-text
 
 Varre campos RichText de todos os conteúdos, extrai os hrefs e testa-os.
+
+Estratégia para links resolveuid (links internos do Plone):
+- Se o UID resolveu no catalog → o conteúdo existe, marco como OK sem HTTP
+  (HEAD anónimo em URLs internas do Plone pode dar 404/403 mesmo com
+  conteúdo válido — autenticação, view em falta, etc.)
+- Se o UID não resolveu → órfão, marco como broken sem HTTP
+- HTTP só é feito para URLs externas
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,12 +23,25 @@ from Products.Five import BrowserView
 
 from ..checker import check_links, classify, summarize
 from ..textextract import collect_text_links
-from .linkchecker import _form_value, DEFAULT_TIMEOUT, DEFAULT_CONCURRENCY, DEFAULT_METHOD, DEFAULT_OK_RULE
+from .linkchecker import (
+    _form_value,
+    DEFAULT_TIMEOUT,
+    DEFAULT_CONCURRENCY,
+    DEFAULT_METHOD,
+    DEFAULT_OK_RULE,
+)
 
 logger = logging.getLogger(__name__)
 
 # Tipos por defeito que costumam ter rich text
-DEFAULT_PORTAL_TYPES = ["Document", "News Item", "Event", "Folder", "Collection", "File"]
+DEFAULT_PORTAL_TYPES = [
+    "Document",
+    "News Item",
+    "Event",
+    "Folder",
+    "Collection",
+    "File",
+]
 
 
 def _collect_brains(portal_types: list[str], review_state: str | None = None):
@@ -34,6 +55,151 @@ def _collect_brains(portal_types: list[str], review_state: str | None = None):
 def _site_root_url() -> str:
     portal = api.portal.get()
     return portal.absolute_url() + "/"
+
+
+def _categorize_urls(
+    url_pages: dict[str, list[dict]],
+) -> tuple[set[str], set[str], list[str]]:
+    """Divide URLs em 3 grupos:
+      - internal_resolved: resolveuid que resolveu (conteúdo existe) — OK sem HTTP
+      - internal_orphans:  resolveuid que NÃO resolveu — broken sem HTTP
+      - external:          tudo o resto — testar via HTTP
+
+    Um URL é considerado "internal" só se TODAS as suas ocorrências vieram
+    de resolveuid. Se houver mistura (resolveuid + path direto para o mesmo
+    alvo), vai para external e testa.
+    """
+    internal_resolved: set[str] = set()
+    internal_orphans: set[str] = set()
+    external: list[str] = []
+
+    for url, pages in url_pages.items():
+        if not pages:
+            continue
+        all_from_resolveuid = all(p.get("source_url") for p in pages)
+        all_resolved = all(p.get("resolved") for p in pages)
+        if all_from_resolveuid and all_resolved:
+            internal_resolved.add(url)
+        elif all_from_resolveuid and not all_resolved:
+            # algum órfão — pode haver mistura; se todos são órfão, é internal_orphan
+            internal_orphans.add(url)
+        else:
+            external.append(url)
+
+    return internal_resolved, internal_orphans, external
+
+
+def _make_internal_row(url: str, pages: list[dict], category: str) -> dict:
+    """Cria uma row sintética para um URL interno (resolveuid resolvido ou órfão)."""
+    source_url = (pages[0].get("source_url") if pages else "") or url
+    if category == "ok":
+        return {
+            "url": url,
+            "status": 200,
+            "status_text": "OK (catalog)",
+            "time_ms": 0,
+            "final_url": "",
+            "error": "",
+            "redirected": False,
+            "method": "catalog",
+            "category": "ok",
+            "pages": pages,
+            "n_pages": len(pages),
+            "from_resolveuid": True,
+            "has_orphan": False,
+            "display_url": source_url,
+        }
+    # orphan
+    # extrai o UID do primeiro source_url para mostrar no erro
+    uid = ""
+    if pages:
+        first_src = pages[0].get("source_url", "")
+        if "resolveuid/" in first_src:
+            uid = (
+                first_src.split("resolveuid/", 1)[-1].split("?", 1)[0].split("#", 1)[0]
+            )
+    return {
+        "url": url,
+        "status": 0,
+        "status_text": "Órfão",
+        "time_ms": 0,
+        "final_url": "",
+        "error": f"UID órfão: {uid}" if uid else "UID órfão",
+        "redirected": False,
+        "method": "catalog",
+        "category": "broken",
+        "pages": pages,
+        "n_pages": len(pages),
+        "from_resolveuid": True,
+        "has_orphan": True,
+        "display_url": source_url,
+    }
+
+
+def _make_external_row(chk, pages: list[dict], ok_rule: str) -> dict:
+    """Cria row a partir de um CheckResult (teste HTTP)."""
+    row = {**chk.to_dict(), "pages": pages, "n_pages": len(pages)}
+    row["category"] = classify(chk, ok_rule)
+    row["from_resolveuid"] = any(p.get("source_url") for p in pages)
+    row["has_orphan"] = any(
+        p.get("source_url") and not p.get("resolved") for p in pages
+    )
+    row["display_url"] = chk.url
+    return row
+
+
+def _build_merged_results(
+    url_pages: dict[str, list[dict]],
+    *,
+    concurrency: int,
+    timeout: float,
+    method: str,
+    ok_rule: str,
+) -> tuple[list[dict], dict]:
+    """Faz o trabalho de categorizar, testar, e fundir resultados.
+
+    Devolve (merged_rows, check_stats).
+    """
+    internal_resolved, internal_orphans, external = _categorize_urls(url_pages)
+
+    merged: list[dict] = []
+    for url in internal_resolved:
+        merged.append(_make_internal_row(url, url_pages[url], "ok"))
+    for url in internal_orphans:
+        merged.append(_make_internal_row(url, url_pages[url], "broken"))
+
+    check_stats = {
+        "total": len(internal_resolved) + len(internal_orphans) + len(external),
+        "ok": len(internal_resolved),
+        "redirect": 0,
+        "broken": len(internal_orphans),
+        "error": 0,
+    }
+
+    if external:
+        try:
+            checks = asyncio.run(
+                check_links(
+                    external,
+                    concurrency=concurrency,
+                    timeout=timeout,
+                    method=method,
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Erro no checker")
+            raise
+        for chk in checks:
+            pages = url_pages.get(chk.url, [])
+            merged.append(_make_external_row(chk, pages, ok_rule))
+        # stats dos externos
+        ext_stats = summarize(checks, ok_rule)
+        check_stats["ok"] += ext_stats["ok"]
+        check_stats["redirect"] += ext_stats["redirect"]
+        check_stats["broken"] += ext_stats["broken"]
+        check_stats["error"] += ext_stats["error"]
+
+    return merged, check_stats
 
 
 class TextLinkCheckerView(BrowserView):
@@ -61,12 +227,18 @@ class TextLinkCheckerView(BrowserView):
         # lê config do form
         pts = self.request.form.get("portal_types")
         if pts:
-            self.config["portal_types"] = [p.strip() for p in pts.split(",") if p.strip()]
+            self.config["portal_types"] = [
+                p.strip() for p in pts.split(",") if p.strip()
+            ]
         else:
             self.config["portal_types"] = DEFAULT_PORTAL_TYPES
         self.config["review_state"] = _form_value(self.request, "review_state", "all")
-        self.config["timeout"] = _form_value(self.request, "timeout", DEFAULT_TIMEOUT, float)
-        self.config["concurrency"] = _form_value(self.request, "concurrency", DEFAULT_CONCURRENCY, int)
+        self.config["timeout"] = _form_value(
+            self.request, "timeout", DEFAULT_TIMEOUT, float
+        )
+        self.config["concurrency"] = _form_value(
+            self.request, "concurrency", DEFAULT_CONCURRENCY, int
+        )
         self.config["method"] = _form_value(self.request, "method", DEFAULT_METHOD)
         self.config["ok_rule"] = _form_value(self.request, "ok_rule", DEFAULT_OK_RULE)
         self.config["include_internal"] = _form_value(
@@ -97,48 +269,20 @@ class TextLinkCheckerView(BrowserView):
         # 2) se pediu check, corre
         if action in ("check", "retest_failed"):
             try:
-                urls = list(self.url_pages.keys())
-                checks = asyncio.run(check_links(
-                    urls,
+                self.results, self.check_stats = _build_merged_results(
+                    self.url_pages,
                     concurrency=self.config["concurrency"],
                     timeout=self.config["timeout"],
                     method=self.config["method"],
-                ))
+                    ok_rule=self.config["ok_rule"],
+                )
             except Exception as e:  # noqa: BLE001
                 self.error = f"Erro no checker: {e}"
                 return self.index()
 
-            merged: list[dict] = []
-            for chk in checks:
-                pages = self.url_pages.get(chk.url, [])
-                row = {**chk.to_dict(), "pages": pages, "n_pages": len(pages)}
-                row["category"] = classify(chk, self.config["ok_rule"])
-                # flags para o template
-                row["from_resolveuid"] = any(p.get("source_url") for p in pages)
-                row["has_orphan"] = any(
-                    p.get("source_url") and not p.get("resolved") for p in pages
-                )
-                row["display_url"] = chk.url
-                # se a chave testada é um resolveuid absolute (orfao), mostrar
-                # o source href original em vez do URL do resolveuid
-                if row["from_resolveuid"] and pages:
-                    first_src = pages[0].get("source_url")
-                    if first_src and chk.url.endswith(
-                        "/resolveuid/"
-                        + first_src
-                        .split("resolveuid/", 1)[-1]
-                        .split("#", 1)[0]
-                        .split("?", 1)[0]
-                    ):
-                        # Mostrar o source href para UID orfãos (mais legivel)
-                        row["display_url"] = first_src
-                merged.append(row)
-
             if action == "retest_failed":
-                merged = [r for r in merged if r["category"] not in ("ok",)]
-
-            self.results = merged
-            self.check_stats = summarize(checks, self.config["ok_rule"])
+                # mantém só os que não estão OK
+                self.results = [r for r in self.results if r["category"] not in ("ok",)]
         else:
             # estado inicial: pendente
             self.results = [
@@ -166,8 +310,13 @@ class TextLinkCheckerView(BrowserView):
                 }
                 for url, pages in self.url_pages.items()
             ]
-            self.check_stats = {"total": len(self.url_pages), "ok": 0,
-                                "redirect": 0, "broken": 0, "error": 0}
+            self.check_stats = {
+                "total": len(self.url_pages),
+                "ok": 0,
+                "redirect": 0,
+                "broken": 0,
+                "error": 0,
+            }
 
         return self.index()
 
@@ -179,17 +328,20 @@ class TextLinkCheckerExport(BrowserView):
         fmt = self.request.form.get("format", "csv").lower()
         config = {
             "timeout": _form_value(self.request, "timeout", DEFAULT_TIMEOUT, float),
-            "concurrency": _form_value(self.request, "concurrency", DEFAULT_CONCURRENCY, int),
+            "concurrency": _form_value(
+                self.request, "concurrency", DEFAULT_CONCURRENCY, int
+            ),
             "method": _form_value(self.request, "method", DEFAULT_METHOD),
             "ok_rule": _form_value(self.request, "ok_rule", DEFAULT_OK_RULE),
-            "include_internal": _form_value(
-                self.request, "include_internal", "1"
-            ) in ("1", "true", "on", "yes"),
+            "include_internal": _form_value(self.request, "include_internal", "1")
+            in ("1", "true", "on", "yes"),
             "portal_types": [
-                p.strip() for p in (
+                p.strip()
+                for p in (
                     self.request.form.get("portal_types")
                     or ",".join(DEFAULT_PORTAL_TYPES)
-                ).split(",") if p.strip()
+                ).split(",")
+                if p.strip()
             ],
             "review_state": _form_value(self.request, "review_state", "all"),
         }
@@ -212,32 +364,22 @@ class TextLinkCheckerExport(BrowserView):
             body = "" if fmt == "csv" else "[]"
             ct = "text/csv" if fmt == "csv" else "application/json"
             self.request.response.setHeader("Content-Type", f"{ct}; charset=utf-8")
-            self.request.response.setHeader("Content-Disposition", f'attachment; filename="link-checker-text.{fmt}"')
+            self.request.response.setHeader(
+                "Content-Disposition", f'attachment; filename="link-checker-text.{fmt}"'
+            )
             return body
 
         try:
-            urls = list(url_pages.keys())
-            checks = asyncio.run(check_links(
-                urls,
+            merged, stats = _build_merged_results(
+                url_pages,
                 concurrency=config["concurrency"],
                 timeout=config["timeout"],
                 method=config["method"],
-            ))
+                ok_rule=config["ok_rule"],
+            )
         except Exception as e:  # noqa: BLE001
             self.request.response.setStatus(500)
             return f"Erro: {e}"
-
-        merged: list[dict] = []
-        for chk in checks:
-            pages = url_pages.get(chk.url, [])
-            row = {**chk.to_dict(), "pages": pages, "n_pages": len(pages)}
-            row["category"] = classify(chk, config["ok_rule"])
-            row["from_resolveuid"] = any(p.get("source_url") for p in pages)
-            row["has_orphan"] = any(
-                p.get("source_url") and not p.get("resolved") for p in pages
-            )
-            row["display_url"] = chk.url
-            merged.append(row)
 
         if fmt == "json":
             self.request.response.setHeader("Content-Type", "application/json; charset=utf-8")
@@ -245,11 +387,7 @@ class TextLinkCheckerExport(BrowserView):
                 "Content-Disposition", 'attachment; filename="link-checker-text.json"'
             )
             return json.dumps(
-                {
-                    "config": config,
-                    "stats": summarize(checks, config["ok_rule"]),
-                    "results": merged,
-                },
+                {"config": config, "stats": stats, "results": merged},
                 indent=2,
                 ensure_ascii=False,
             )
@@ -258,14 +396,27 @@ class TextLinkCheckerExport(BrowserView):
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow([
-            "url", "status", "status_text", "time_ms", "method",
-            "redirected", "final_url", "error", "category",
-            "n_pages", "page_titles", "page_paths",
+            "url",
+            "display_url",
+            "status",
+            "status_text",
+            "time_ms",
+            "method",
+            "redirected",
+            "final_url",
+            "error",
+            "category",
+            "from_resolveuid",
+            "has_orphan",
+            "n_pages",
+            "page_titles",
+            "page_paths",
         ])
         for row in merged:
             pages = row.get("pages", [])
             writer.writerow([
                 row.get("url", ""),
+                row.get("display_url", ""),
                 row.get("status", 0),
                 row.get("status_text", ""),
                 row.get("time_ms", ""),
@@ -274,6 +425,8 @@ class TextLinkCheckerExport(BrowserView):
                 row.get("final_url", ""),
                 row.get("error", ""),
                 row.get("category", ""),
+                row.get("from_resolveuid", False),
+                row.get("has_orphan", False),
                 row.get("n_pages", 0),
                 " | ".join(p.get("title", "") for p in pages),
                 " | ".join(p.get("path", "") for p in pages),
