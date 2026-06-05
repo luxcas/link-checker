@@ -113,6 +113,25 @@ class TextLinkCheckerView(BrowserView):
                 pages = self.url_pages.get(chk.url, [])
                 row = {**chk.to_dict(), "pages": pages, "n_pages": len(pages)}
                 row["category"] = classify(chk, self.config["ok_rule"])
+                # flags para o template
+                row["from_resolveuid"] = any(p.get("source_url") for p in pages)
+                row["has_orphan"] = any(
+                    p.get("source_url") and not p.get("resolved") for p in pages
+                )
+                row["display_url"] = chk.url
+                # se a chave testada é um resolveuid absolute (orfao), mostrar
+                # o source href original em vez do URL do resolveuid
+                if row["from_resolveuid"] and pages:
+                    first_src = pages[0].get("source_url")
+                    if first_src and chk.url.endswith(
+                        "/resolveuid/"
+                        + first_src
+                        .split("resolveuid/", 1)[-1]
+                        .split("#", 1)[0]
+                        .split("?", 1)[0]
+                    ):
+                        # Mostrar o source href para UID orfãos (mais legivel)
+                        row["display_url"] = first_src
                 merged.append(row)
 
             if action == "retest_failed":
@@ -125,10 +144,25 @@ class TextLinkCheckerView(BrowserView):
             self.results = [
                 {
                     "url": url,
-                    "status": 0, "status_text": "", "time_ms": None,
-                    "final_url": "", "error": "", "redirected": False,
-                    "method": "", "category": "pending",
-                    "pages": pages, "n_pages": len(pages),
+                    "status": 0,
+                    "status_text": "",
+                    "time_ms": None,
+                    "final_url": "",
+                    "error": "",
+                    "redirected": False,
+                    "method": "",
+                    "category": "pending",
+                    "pages": pages,
+                    "n_pages": len(pages),
+                    "from_resolveuid": any(p.get("source_url") for p in pages),
+                    "has_orphan": any(
+                        p.get("source_url") and not p.get("resolved") for p in pages
+                    ),
+                    "display_url": (
+                        pages[0].get("source_url")
+                        if pages and pages[0].get("source_url")
+                        else url
+                    ),
                 }
                 for url, pages in self.url_pages.items()
             ]
@@ -198,6 +232,11 @@ class TextLinkCheckerExport(BrowserView):
             pages = url_pages.get(chk.url, [])
             row = {**chk.to_dict(), "pages": pages, "n_pages": len(pages)}
             row["category"] = classify(chk, config["ok_rule"])
+            row["from_resolveuid"] = any(p.get("source_url") for p in pages)
+            row["has_orphan"] = any(
+                p.get("source_url") and not p.get("resolved") for p in pages
+            )
+            row["display_url"] = chk.url
             merged.append(row)
 
         if fmt == "json":
