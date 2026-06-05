@@ -1,5 +1,7 @@
 <configure xmlns="http://namespaces.zope.org/zope">
 
   <!-- -*- extra stuff goes here -*- -->
-
+  <permission
+      id="collective.linkchecker.Run"
+      title="collective.linkchecker: Run link checker" />
 </configure>

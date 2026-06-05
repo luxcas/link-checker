@@ -1,0 +1,279 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n"
+      i18n:domain="collective.linkchecker"
+      metal:use-macro="context/main_template/macros/master">
+
+  <metal:block fill-slot="style">
+
+  </metal:block>
+
+  <metal:block fill-slot="content">
+      <style type="text/css">
+      .lc-wrap { max-width: 1280px; margin: 1em auto; }
+      .lc-card { background: #fff; border: 1px solid #d4d4d4; border-radius: 8px; padding: 1.2em 1.4em; margin-bottom: 1em; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+      .lc-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: .6em; margin-bottom: 1em; }
+      .lc-stats2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6em; margin-bottom: 1em; }
+      .lc-stat { background: #f7f7f7; border: 1px solid #e2e2e2; border-radius: 6px; padding: .6em .8em; }
+      .lc-stat .n { font-size: 1.6em; font-weight: 600; line-height: 1.1; }
+      .lc-stat .l { font-size: .8em; color: #777; text-transform: uppercase; letter-spacing: .04em; }
+      .lc-stat.ok .n { color: #2c8a4a; }
+      .lc-stat.warn .n { color: #b17a00; }
+      .lc-stat.err .n { color: #c1392b; }
+      .lc-stat.info .n { color: #2a6fb3; }
+      .lc-row { display: flex; flex-wrap: wrap; gap: .8em; align-items: flex-end; }
+      .lc-field { flex: 1; min-width: 140px; }
+      .lc-field label { display: block; font-size: .8em; color: #555; margin-bottom: .25em; font-weight: 600; }
+      .lc-field input, .lc-field select { width: 100%; padding: .4em .5em; border: 1px solid #c4c4c4; border-radius: 4px; }
+      .lc-field.num { max-width: 110px; }
+      .lc-field.method { max-width: 130px; }
+      .lc-field.types { flex: 2; }
+      .lc-btnrow { display: flex; gap: .6em; flex-wrap: wrap; margin-top: 1em; align-items: center; }
+      .lc-btn { display: inline-block; padding: .55em 1.1em; border: 1px solid #2273b3; background: #2273b3; color: #fff; border-radius: 4px; font-weight: 600; text-decoration: none; cursor: pointer; }
+      .lc-btn:hover { background: #1a5d94; color: #fff; }
+      .lc-btn.secondary { background: #fff; color: #2273b3; }
+      .lc-btn.secondary:hover { background: #eef5fb; color: #1a5d94; }
+      .lc-btn.danger { background: #c1392b; border-color: #c1392b; }
+      .lc-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .lc-err { background: #fde9e7; border: 1px solid #c1392b; color: #6a1a13; padding: .6em .8em; border-radius: 4px; margin-top: .8em; }
+      .lc-info { background: #eaf3fa; border: 1px solid #2a6fb3; color: #14406b; padding: .6em .8em; border-radius: 4px; margin-top: .8em; font-size: .9em; }
+      .lc-nav { display: flex; gap: .5em; margin-bottom: 1em; font-size: .9em; }
+      .lc-nav a { padding: .3em .8em; border: 1px solid #d4d4d4; border-radius: 4px; color: #2273b3; text-decoration: none; background: #fff; }
+      .lc-nav a.active { background: #2273b3; color: #fff; border-color: #2273b3; }
+      table.lc-table { width: 100%; border-collapse: collapse; font-size: .9em; }
+      table.lc-table th, table.lc-table td { padding: .45em .6em; border-bottom: 1px solid #ececec; text-align: left; vertical-align: top; }
+      table.lc-table th { background: #f1f1f1; font-size: .8em; text-transform: uppercase; color: #555; letter-spacing: .03em; position: sticky; top: 0; z-index: 1; }
+      table.lc-table tr:hover { background: #fafafa; }
+      table.lc-table tr.row-pending { opacity: .55; }
+      td.lc-url { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      td.lc-url a { color: #2273b3; }
+      .lc-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .78em; font-weight: 600; }
+      .lc-pill.ok { background: #e2f4e8; color: #2c8a4a; border: 1px solid #b8dec4; }
+      .lc-pill.redirect { background: #fdf2dc; color: #8a5e00; border: 1px solid #e6cf86; }
+      .lc-pill.broken { background: #fde9e7; color: #c1392b; border: 1px solid #ecb5ad; }
+      .lc-pill.error { background: #ececec; color: #555; border: 1px solid #c4c4c4; }
+      .lc-pill.pending { background: #fff; color: #999; border: 1px dashed #c4c4c4; }
+      .lc-pages-toggle { font-size: .8em; color: #2273b3; cursor: pointer; user-select: none; }
+      .lc-pages-toggle:hover { text-decoration: underline; }
+      .lc-pages-list {  margin: .3em 0 0; padding: 0; list-style: none; font-size: .85em; }
+      .lc-pages-list.open { display: block; }
+      .lc-pages-list li { padding: 2px 0; color: #444; }
+      .lc-pages-list a { color: #2273b3; }
+      .lc-empty { padding: 2em; text-align: center; color: #777; }
+      code, .lc-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+      .lc-twrap { max-height: 70vh; overflow: auto; border: 1px solid #e2e2e2; border-radius: 6px; }
+      .lc-check { display: inline-flex; align-items: center; gap: .35em; margin-top: .6em; font-size: .9em; color: #555; }
+      .lc-check input { margin: 0; }
+    </style>
+    <div class="lc-wrap"
+         tal:define="
+           cstats view/collect_stats;
+           rstats view/check_stats;
+           results view/results;
+           config view/config;
+           last_action view/last_action;
+           error view/error;
+         ">
+
+      <h1>🔗 Link Checker — texto</h1>
+      <p class="discreet" style="margin-top: -.5em;">
+        Varre todos os campos rich text (<code>&lt;a href&gt;</code>) das páginas
+        do site e testa os URLs encontrados.
+      </p>
+
+      <div class="lc-nav">
+        <a href="@@link-checker">Link content (remoteUrl)</a>
+        <a href="@@link-checker-text" class="active">Links em texto</a>
+      </div>
+
+      <div class="lc-card">
+        <form method="post" action="@@link-checker-text" id="lc-form">
+          <div class="lc-row">
+            <div class="lc-field types">
+              <label for="portal_types">Tipos de conteúdo (vírgulas)</label>
+              <input type="text" name="portal_types" id="portal_types"
+                     tal:attributes="value python: ','.join(config['portal_types'])" />
+            </div>
+            <div class="lc-field method">
+              <label for="review_state">Estado de workflow</label>
+              <select name="review_state" id="review_state">
+                <option value="all" tal:attributes="selected python:config['review_state']=='all'">todos</option>
+                <option value="published" tal:attributes="selected python:config['review_state']=='published'">publicados</option>
+                <option value="private" tal:attributes="selected python:config['review_state']=='private'">privados</option>
+                <option value="pending" tal:attributes="selected python:config['review_state']=='pending'">pendentes</option>
+              </select>
+            </div>
+            <div class="lc-field num">
+              <label for="timeout">Timeout (s)</label>
+              <input type="number" name="timeout" id="timeout"
+                     min="1" max="60"
+                     tal:attributes="value config/timeout" />
+            </div>
+            <div class="lc-field num">
+              <label for="concurrency">Concorrência</label>
+              <input type="number" name="concurrency" id="concurrency"
+                     min="1" max="200"
+                     tal:attributes="value config/concurrency" />
+            </div>
+            <div class="lc-field method">
+              <label for="method">Método</label>
+              <select name="method" id="method">
+                <option value="HEAD" tal:attributes="selected python:config['method']=='HEAD'">HEAD</option>
+                <option value="GET" tal:attributes="selected python:config['method']=='GET'">GET</option>
+              </select>
+            </div>
+            <div class="lc-field method">
+              <label for="ok_rule">Tratar como OK</label>
+              <select name="ok_rule" id="ok_rule">
+                <option value="2xx" tal:attributes="selected python:config['ok_rule']=='2xx'">2xx</option>
+                <option value="2xx-3xx" tal:attributes="selected python:config['ok_rule']=='2xx-3xx'">2xx e 3xx</option>
+                <option value="any" tal:attributes="selected python:config['ok_rule']=='any'">qualquer</option>
+              </select>
+            </div>
+          </div>
+          <label class="lc-check">
+            <input type="checkbox" name="include_internal" value="1"
+                   tal:attributes="checked config/include_internal" />
+            Incluir links internos (relativos ao site, ex: <code>/noticias</code>)
+          </label>
+
+          <div class="lc-btnrow">
+            <button type="submit" name="action" value="check" class="lc-btn">
+              ▶ Varrer e testar
+            </button>
+            <!-- <button type="submit" name="action" value="retest_failed"
+                    class="lc-btn secondary"
+                    tal:attributes="disabled python: rstats['broken']+rstats['error'] == 0">
+              ↻ Re-testar falhados
+            </button> -->
+            <span style="flex:1"></span>
+            <a class="lc-btn secondary"
+               tal:attributes="href string:@@link-checker-text-export?format=csv&amp;portal_types=${config/portal_types}&amp;review_state=${config/review_state}&amp;timeout=${config/timeout}&amp;concurrency=${config/concurrency}&amp;method=${config/method}&amp;ok_rule=${config/ok_rule}&amp;include_internal=${config/include_internal}">
+              ↓ CSV
+            </a>
+            <a class="lc-btn secondary"
+               tal:attributes="href string:@@link-checker-text-export?format=json&amp;portal_types=${config/portal_types}&amp;review_state=${config/review_state}&amp;timeout=${config/timeout}&amp;concurrency=${config/concurrency}&amp;method=${config/method}&amp;ok_rule=${config/ok_rule}&amp;include_internal=${config/include_internal}">
+              ↓ JSON
+            </a>
+          </div>
+        </form>
+
+        <div class="lc-err" tal:condition="error" tal:content="error"></div>
+      </div>
+
+      <div class="lc-stats2" tal:condition="cstats">
+        <div class="lc-stat">
+          <div class="n" tal:content="cstats/pages_scanned">0</div>
+          <div class="l">Páginas varridas</div>
+        </div>
+        <div class="lc-stat">
+          <div class="n" tal:content="cstats/fields_scanned">0</div>
+          <div class="l">Campos rich text</div>
+        </div>
+        <div class="lc-stat">
+          <div class="n" tal:content="cstats/urls_total">0</div>
+          <div class="l">Hrefs encontrados (com repetições)</div>
+        </div>
+        <div class="lc-stat info">
+          <div class="n" tal:content="cstats/urls_unique">0</div>
+          <div class="l">URLs únicos para testar</div>
+        </div>
+      </div>
+
+      <div class="lc-stats" tal:condition="python: rstats and rstats.get('total')">
+        <div class="lc-stat">
+          <div class="n" tal:content="rstats/total">0</div>
+          <div class="l">Total testados</div>
+        </div>
+        <div class="lc-stat ok">
+          <div class="n" tal:content="rstats/ok">0</div>
+          <div class="l">Vivos</div>
+        </div>
+        <div class="lc-stat warn">
+          <div class="n" tal:content="rstats/redirect">0</div>
+          <div class="l">Redirecionam</div>
+        </div>
+        <div class="lc-stat err">
+          <div class="n" tal:content="rstats/broken">0</div>
+          <div class="l">Quebrados</div>
+        </div>
+        <div class="lc-stat info">
+          <div class="n" tal:content="rstats/error">0</div>
+          <div class="l">Erros de rede</div>
+        </div>
+      </div>
+
+      <div class="lc-card" tal:condition="python: not results and not error">
+        <div class="lc-empty">
+          Nenhum <code>&lt;a href&gt;</code> encontrado nos rich text fields.
+          <br/><br/>
+          Verifica os tipos de conteúdo selecionados ou publica páginas com texto que tenha links.
+        </div>
+      </div>
+
+      <div class="lc-twrap" tal:condition="results">
+        <table class="lc-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;">#</th>
+              <th>URL</th>
+              <th style="width: 110px;">Estado</th>
+              <th style="width: 80px;">Código</th>
+              <th style="width: 80px;">Tempo</th>
+              <th>Final / Erro</th>
+              <th style="width: 90px;">Páginas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr tal:repeat="row results"
+                tal:attributes="class python: 'row-'+row['category']">
+              <td class="lc-mono" tal:content="repeat/row/number">1</td>
+              <td class="lc-url" tal:define="u row/url">
+                <a tal:attributes="href u; title u"
+                   target="_blank" rel="noopener noreferrer"
+                   tal:content="u">url</a>
+              </td>
+              <td>
+                <span tal:attributes="class string:lc-pill ${row/category}"
+                      tal:content="row/category">ok</span>
+              </td>
+              <td class="lc-mono" tal:content="row/status">0</td>
+              <td class="lc-mono">
+                <span tal:condition="not: row/time_ms">—</span>
+                <span tal:condition="row/time_ms"
+                     >${row/time_ms} ms</span>
+              </td>
+              <td class="lc-mono"
+                  style="font-size:.85em;color:#666;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  tal:define="
+                    info python: row['final_url'] or row['error'] or ''
+                  ">
+                <span tal:attributes="title info" tal:content="info"></span>
+              </td>
+              <td>
+                <span class="lc-pages-toggle "
+                      tal:condition="python: row.get('n_pages', 0) > 0"
+                      tal:define="number python: repeat.row.number"
+                     >
+                  ▸ <span tal:content="python: row['n_pages']">1</span> página(s)
+                </span>
+                <ul class="lc-pages-list  collapsed"
+
+                 tal:define="number python: repeat.row.number"
+                    tal:attributes="id string: multiCollapseExample${number}">
+                  <li tal:repeat="p python: row.get('pages', [])">
+                    <a tal:attributes="href string:${p/path}/edit"
+                       target="_blank" tal:content="p/title">título</a>
+                    <span style="color:#999"> — campo <code tal:content="p/field">text</code>
+                    · <span tal:content="p/path">/path</span></span>
+                  </li>
+                </ul>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </metal:block>
+</html>

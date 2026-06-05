@@ -28,6 +28,8 @@ dependencies = [
     "plone.classicui",
     "plone.app.caching",
     "z3c.jbot",
+    "httpx>=0.27",
+    "collective.exportimport",
 ]
 
 [project.optional-dependencies]

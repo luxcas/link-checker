@@ -2,5 +2,9 @@
 <rolemap>
   <permissions>
     <!-- -*- extra stuff goes here -*- -->
+        <permission name="collective.linkchecker: Run link checker" acquire="True">
+      <role name="Manager"/>
+      <role name="Site Administrator"/>
+    </permission>
   </permissions>
 </rolemap>

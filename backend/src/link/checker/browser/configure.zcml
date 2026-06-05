@@ -21,5 +21,33 @@
       name="link.checker"
       type="plone"
       />
+  <browser:page
+      name="link-checker"
+      for="zope.interface.Interface"
+      class=".linkchecker.LinkCheckerView"
+      permission="collective.linkchecker.Run"
+      template="linkchecker.pt"
+      />
 
+  <browser:page
+      name="link-checker-export"
+      for="zope.interface.Interface"
+      class=".linkchecker.LinkCheckerExport"
+      permission="collective.linkchecker.Run"
+      />
+
+  <browser:page
+      name="link-checker-text"
+      for="zope.interface.Interface"
+      class=".textlinkchecker.TextLinkCheckerView"
+      permission="collective.linkchecker.Run"
+      template="textlinkchecker.pt"
+      />
+
+  <browser:page
+      name="link-checker-text-export"
+      for="zope.interface.Interface"
+      class=".textlinkchecker.TextLinkCheckerExport"
+      permission="collective.linkchecker.Run"
+      />
 </configure>
