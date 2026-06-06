@@ -60,13 +60,13 @@ def _categorize_urls(
     url_pages: dict[str, list[dict]],
 ) -> tuple[set[str], set[str], list[str]]:
     """Divide URLs em 3 grupos:
-      - internal_resolved: resolveuid que resolveu (conteúdo existe) — OK sem HTTP
-      - internal_orphans:  resolveuid que NÃO resolveu — broken sem HTTP
-      - external:          tudo o resto — testar via HTTP
+      - internal_resolved: resolveuid OU relativo que resolveu (conteúdo existe) — OK sem HTTP
+      - internal_orphans:  resolveuid OU relativo que NÃO resolveu — broken sem HTTP
+      - external:          tudo o resto (URLs absolutas) — testar via HTTP
 
-    Um URL é considerado "internal" só se TODAS as suas ocorrências vieram
-    de resolveuid. Se houver mistura (resolveuid + path direto para o mesmo
-    alvo), vai para external e testa.
+    Um URL é "internal" se TODAS as suas ocorrências vieram de resolveuid ou
+    de link relativo (page/site), E foram resolvidas (ou todas não resolvidas).
+    URLs absolutas vão sempre para external.
     """
     internal_resolved: set[str] = set()
     internal_orphans: set[str] = set()
@@ -75,12 +75,15 @@ def _categorize_urls(
     for url, pages in url_pages.items():
         if not pages:
             continue
-        all_from_resolveuid = all(p.get("source_url") for p in pages)
-        all_resolved = all(p.get("resolved") for p in pages)
-        if all_from_resolveuid and all_resolved:
+        all_internal_source = all(
+            p.get("from_resolveuid") or p.get("from_relative") for p in pages
+        )
+        all_resolved = all(
+            p.get("resolved") or p.get("resolved_via_path") for p in pages
+        )
+        if all_internal_source and all_resolved:
             internal_resolved.add(url)
-        elif all_from_resolveuid and not all_resolved:
-            # algum órfão — pode haver mistura; se todos são órfão, é internal_orphan
+        elif all_internal_source and not all_resolved:
             internal_orphans.add(url)
         else:
             external.append(url)
@@ -89,8 +92,10 @@ def _categorize_urls(
 
 
 def _make_internal_row(url: str, pages: list[dict], category: str) -> dict:
-    """Cria uma row sintética para um URL interno (resolveuid resolvido ou órfão)."""
+    """Cria uma row sintética para um URL interno (resolveuid/path resolvido ou órfão)."""
     source_url = (pages[0].get("source_url") if pages else "") or url
+    from_resolveuid = any(p.get("from_resolveuid") for p in pages)
+    from_relative = any(p.get("from_relative") for p in pages)
     if category == "ok":
         return {
             "url": url,
@@ -104,32 +109,38 @@ def _make_internal_row(url: str, pages: list[dict], category: str) -> dict:
             "category": "ok",
             "pages": pages,
             "n_pages": len(pages),
-            "from_resolveuid": True,
+            "from_resolveuid": from_resolveuid,
+            "from_relative": from_relative,
             "has_orphan": False,
             "display_url": source_url,
         }
     # orphan
-    # extrai o UID do primeiro source_url para mostrar no erro
-    uid = ""
+    detail = ""
     if pages:
         first_src = pages[0].get("source_url", "")
         if "resolveuid/" in first_src:
-            uid = (
+            detail = (
                 first_src.split("resolveuid/", 1)[-1].split("?", 1)[0].split("#", 1)[0]
             )
+        else:
+            detail = first_src
+    error_msg = (
+        f"UID órfão: {detail}" if from_resolveuid else f"Path não existe: {detail}"
+    )
     return {
         "url": url,
         "status": 0,
         "status_text": "Órfão",
         "time_ms": 0,
         "final_url": "",
-        "error": f"UID órfão: {uid}" if uid else "UID órfão",
+        "error": error_msg,
         "redirected": False,
         "method": "catalog",
         "category": "broken",
         "pages": pages,
         "n_pages": len(pages),
-        "from_resolveuid": True,
+        "from_resolveuid": from_resolveuid,
+        "from_relative": from_relative,
         "has_orphan": True,
         "display_url": source_url,
     }

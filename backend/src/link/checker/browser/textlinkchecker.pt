@@ -180,13 +180,21 @@
         </div>
       </div>
 
-      <div class="lc-info" tal:condition="python: cstats and cstats.get('resolveuid_resolved', 0) + cstats.get('resolveuid_orphans', 0) > 0"
+      <div class="lc-info" tal:condition="python: cstats and cstats.get('resolveuid_resolved', 0) + cstats.get('resolveuid_orphans', 0) + cstats.get('relative_resolved', 0) + cstats.get('relative_orphans', 0) > 0"
            style="display:flex;gap:1em;align-items:center;flex-wrap:wrap">
-        <span>🔗 <strong tal:content="cstats/resolveuid_resolved">0</strong>
-          <code>resolveuid</code> resolvidos para conteúdo existente</span>
-        <span tal:condition="python: cstats.get('resolveuid_orphans', 0) > 0" style="color:#c1392b">
-          ⚠ <strong tal:content="cstats/resolveuid_orphans">0</strong>
-          <code>resolveuid</code> órfãos (UID não existe — conteúdo apagado)
+        <span tal:condition="python: cstats.get('resolveuid_resolved', 0) > 0 or cstats.get('resolveuid_orphans', 0) > 0">
+          🆔 <strong tal:content="cstats/resolveuid_resolved">0</strong>
+          <code>resolveuid</code> resolvidos
+          <span tal:condition="python: cstats.get('resolveuid_orphans', 0) > 0" style="color:#c1392b">
+            · <strong tal:content="cstats/resolveuid_orphans">0</strong> órfãos
+          </span>
+        </span>
+        <span tal:condition="python: cstats.get('relative_resolved', 0) > 0 or cstats.get('relative_orphans', 0) > 0">
+          📁 <strong tal:content="cstats/relative_resolved">0</strong>
+          <code>paths</code> resolvidos
+          <span tal:condition="python: cstats.get('relative_orphans', 0) > 0" style="color:#c1392b">
+            · <strong tal:content="cstats/relative_orphans">0</strong> não existem
+          </span>
         </span>
       </div>
 
@@ -246,12 +254,17 @@
                    tal:attributes="href href; title href"
                    target="_blank" rel="noopener noreferrer"
                    tal:content="u">url</a>
-                <span tal:condition="row/from_resolveuid"
+                <span tal:condition="row/from_resolveuid | nothing"
                       style="display:inline-block;margin-left:.4em;padding:1px 6px;background:#fdf2dc;color:#8a5e00;border:1px solid #e6cf86;border-radius:999px;font-size:.7em;font-weight:600"
                       title="Link interno do Plone resolvido por UID">
                   via UID
                 </span>
-                <span tal:condition="row/has_orphan"
+                <span tal:condition="row/from_relative | nothing"
+                      style="display:inline-block;margin-left:.4em;padding:1px 6px;background:#eaf3fa;color:#2a6fb3;border:1px solid #b6d4ee;border-radius:999px;font-size:.7em;font-weight:600"
+                      title="Link relativo resolvido contra o URL da página e validado no catalog">
+                  via path
+                </span>
+                <span tal:condition="row/has_orphan | nothing"
                       style="display:inline-block;margin-left:.4em;padding:1px 6px;background:#fde9e7;color:#c1392b;border:1px solid #ecb5ad;border-radius:999px;font-size:.7em;font-weight:600"
                       title="Este URL resolveuid aponta para um conteúdo que não existe">
                   órfão
@@ -292,11 +305,20 @@
                     <span style="color:#999"> — campo <code tal:content="p/field">text</code>
                     · <span tal:content="p/path">/path</span></span>
                     <div tal:condition="p/source_url | nothing" style="color:#b17a00;margin-top:2px;font-size:.85em">
-                      🔗 link interno: <code tal:content="p/source_url">../resolveuid/abc</code>
-                      <span tal:condition="not: p/resolved" style="color:#c1392b">
+                      🔗 link interno: <code tal:content="p/source_url | nothing">../resolveuid/abc</code>
+                      <span tal:condition="not: p/resolved | nothing" style="color:#c1392b">
                         — <strong>UID órfão</strong> (conteúdo apagado)
                       </span>
-                      <span tal:condition="p/resolved" style="color:#2c8a4a">
+                      <span tal:condition="p/resolved | nothing" style="color:#2c8a4a">
+                        → <span tal:content="p/target_title">alvo</span>
+                      </span>
+                    </div>
+                    <div tal:condition="p/from_relative | nothing" style="color:#2a6fb3;margin-top:2px;font-size:.85em">
+                      🔗 link relativo: <code tal:content="p/source_url | nothing">o-livro</code>
+                      <span tal:condition="not: p/resolved_via_path | nothing" style="color:#c1392b">
+                        — <strong>path não existe</strong> (página apagada)
+                      </span>
+                      <span tal:condition="p/resolved_via_path | nothing" style="color:#2c8a4a">
                         → <span tal:content="p/target_title">alvo</span>
                       </span>
                     </div>
